@@ -36,7 +36,7 @@ La documentación de requisitos y arquitectura se conserva fuera del código, en
 
 ## Ejecutar el proyecto
 
-Desde la carpeta raíz `C:\Users\AtlayPC\Desktop\SIREPES`:
+Desde la carpeta raíz 
 
 ```powershell
 npm install
