@@ -1,0 +1,83 @@
+const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const yesNo = ['Sí', 'No']
+const entityOptions = ['Nayarit', 'Sinaloa', 'Jalisco', 'Sonora', 'Baja California', 'Otro']
+
+export const pescaSections = [
+  {
+    id: 'persona', label: 'Persona', title: 'Información general',
+    description: 'Identificación y contacto de quien realiza la actividad pesquera.',
+    fields: [
+      { name: 'tipoPersona', label: 'Tipo de persona', type: 'radio', options: ['Física', 'Moral'], validation: 'required' },
+      { name: 'curp', label: 'CURP', type: 'text', placeholder: '18 caracteres', visibleWhen: { field: 'tipoPersona', value: 'Física' }, validation: 'curp', help: 'Se revisará el formato; la autenticidad requiere consulta oficial.' },
+      { name: 'rfcFisica', label: 'RFC', type: 'text', placeholder: '13 caracteres', visibleWhen: { field: 'tipoPersona', value: 'Física' }, validation: 'rfc-fisica' },
+      { name: 'nombres', label: 'Nombre(s)', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'apellidoPaterno', label: 'Apellido paterno', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'apellidoMaterno', label: 'Apellido materno', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'fechaNacimiento', label: 'Fecha de nacimiento', type: 'date', visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'edad', label: 'Edad', type: 'number', help: 'Dato derivado por validar con SEDER.', visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'sexo', label: 'Sexo', type: 'select', options: ['Mujer', 'Hombre', 'No especificado'], visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'lugarNacimiento', label: 'Lugar de nacimiento', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'municipioNacimiento', label: 'Municipio de nacimiento', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'estadoNacimiento', label: 'Estado de nacimiento', type: 'select', options: entityOptions, visibleWhen: { field: 'tipoPersona', value: 'Física' } },
+      { name: 'razonSocial', label: 'Razón social', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Moral' } },
+      { name: 'rfcMoral', label: 'RFC de la persona moral', type: 'text', placeholder: '12 caracteres', visibleWhen: { field: 'tipoPersona', value: 'Moral' }, validation: 'rfc-moral' },
+      { name: 'numeroSocios', label: 'Número de socios', type: 'number', visibleWhen: { field: 'tipoPersona', value: 'Moral' } },
+      { name: 'padronActualizado', label: '¿Cuenta con padrón actualizado?', type: 'select', options: yesNo, visibleWhen: { field: 'tipoPersona', value: 'Moral' } },
+      { name: 'representante', label: 'Nombre del representante legal', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Moral' } },
+      { name: 'curpRepresentante', label: 'CURP del representante', type: 'text', placeholder: '18 caracteres', visibleWhen: { field: 'tipoPersona', value: 'Moral' }, validation: 'curp' },
+      { name: 'rfcRepresentante', label: 'RFC del representante', type: 'text', placeholder: '13 caracteres', visibleWhen: { field: 'tipoPersona', value: 'Moral' }, validation: 'rfc-fisica' },
+      { name: 'rnpa', label: 'RNPA de la unidad económica', type: 'text', visibleWhen: { field: 'tipoPersona', value: 'Moral' } },
+      { name: 'calle', label: 'Calle', type: 'text' }, { name: 'numeroExterior', label: 'Número exterior', type: 'text' },
+      { name: 'numeroInterior', label: 'Número interior', type: 'text', placeholder: 'Indica S/N si no aplica' }, { name: 'codigoPostal', label: 'Código postal', type: 'text', validation: 'postal-code' },
+      { name: 'localidad', label: 'Localidad', type: 'text' }, { name: 'municipio', label: 'Municipio', type: 'text' },
+      { name: 'estado', label: 'Estado', type: 'select', options: entityOptions }, { name: 'telefono', label: 'Teléfono', type: 'tel', validation: 'phone' },
+      { name: 'correo', label: 'Correo electrónico', type: 'email' },
+    ],
+  },
+  {
+    id: 'actividad', label: 'Actividad', title: 'Actividad pesquera', description: 'Registra el perfil productivo y los permisos asociados.',
+    fields: [
+      { name: 'estatusPescador', label: 'Estatus de pescador', type: 'select', options: ['Socio de cooperativa', 'Permisionario', 'Pescador libre'] },
+      { name: 'cooperativa', label: 'Nombre de la cooperativa', type: 'text', visibleWhen: { field: 'estatusPescador', value: 'Socio de cooperativa' } },
+      { name: 'escolaridad', label: 'Último grado de estudios', type: 'select', options: ['Sin estudios', 'Primaria', 'Secundaria', 'Bachillerato', 'Técnico', 'Licenciatura', 'Posgrado'] },
+      { name: 'experiencia', label: 'Años de experiencia', type: 'number' },
+      { name: 'especies', label: 'Especies capturadas', type: 'textarea' },
+      { name: 'produccionPescado', label: 'Producción anual de pescado (kg)', type: 'number' },
+      { name: 'produccionCrustaceos', label: 'Producción anual de crustáceos (kg)', type: 'number' },
+      { name: 'produccionMoluscos', label: 'Producción anual de moluscos (kg)', type: 'number' },
+      { name: 'ingresos', label: 'Ingresos anuales aproximados (MXN)', type: 'number' },
+      { name: 'permisos', label: 'Permisos por pesquería', type: 'textarea', help: 'Indica pesquería, solicitud, RNPA, número y vigencia.' },
+    ],
+  },
+  {
+    id: 'equipo', label: 'Embarcación y equipo', title: 'Embarcación y equipo', description: 'Los datos de cada equipo se habilitan según corresponda.',
+    fields: [
+      { name: 'tieneEmbarcacion', label: '¿Cuenta con embarcación?', type: 'select', options: yesNo },
+      { name: 'nombreEmbarcacion', label: 'Nombre de la embarcación', type: 'text', visibleWhen: { field: 'tieneEmbarcacion', value: 'Sí' } },
+      { name: 'estadoRegistro', label: 'Estado de registro', type: 'text', visibleWhen: { field: 'tieneEmbarcacion', value: 'Sí' } },
+      { name: 'matricula', label: 'Matrícula', type: 'text', visibleWhen: { field: 'tieneEmbarcacion', value: 'Sí' } },
+      { name: 'eslora', label: 'Eslora (m)', type: 'number', visibleWhen: { field: 'tieneEmbarcacion', value: 'Sí' } },
+      { name: 'manga', label: 'Manga (m)', type: 'number', visibleWhen: { field: 'tieneEmbarcacion', value: 'Sí' } },
+      { name: 'capacidadPersonas', label: 'Capacidad de personas', type: 'number', visibleWhen: { field: 'tieneEmbarcacion', value: 'Sí' } },
+      { name: 'tieneMotor', label: '¿Cuenta con motor fuera de borda?', type: 'select', options: yesNo },
+      { name: 'potenciaMotor', label: 'Potencia (HP)', type: 'number', visibleWhen: { field: 'tieneMotor', value: 'Sí' } },
+      { name: 'marcaMotor', label: 'Marca del motor', type: 'text', visibleWhen: { field: 'tieneMotor', value: 'Sí' } },
+      { name: 'tiemposMotor', label: 'Número de tiempos', type: 'select', options: ['2', '4'], visibleWhen: { field: 'tieneMotor', value: 'Sí' } },
+      { name: 'artesEquipo', label: 'Equipos y artes de pesca', type: 'textarea' },
+    ],
+  },
+  {
+    id: 'temporada', label: 'Temporada', title: 'Temporada y datos complementarios', description: 'Completa los sitios de operación y meses de actividad.',
+    fields: [
+      { name: 'actividadAlterna', label: '¿Realiza otra actividad?', type: 'select', options: yesNo },
+      { name: 'actividadAlternaCual', label: '¿Cuál actividad?', type: 'text', visibleWhen: { field: 'actividadAlterna', value: 'Sí' } },
+      { name: 'lugarPesca', label: 'Lugar de pesca', type: 'text' }, { name: 'sitioDesembarque', label: 'Sitio de desembarque', type: 'text' },
+      { name: 'mesesPesca', label: 'Meses en los que pesca', type: 'checkbox-group', options: months },
+      { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
+    ],
+  },
+]
+
+for (const section of pescaSections) {
+  for (const field of section.fields) field.required = true
+}

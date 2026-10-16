@@ -1,0 +1,20 @@
+{
+  "name": "@sirepes/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=../.env --watch src/server.js",
+    "start": "node --env-file=../.env src/server.js",
+    "db:migrate": "node --env-file=../.env src/db/migrate.js",
+    "db:bootstrap-admin": "node --env-file=../.env src/scripts/bootstrap-admin.js",
+    "db:create-admin": "node --env-file=../.env src/scripts/create-admin.js"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.1.0",
+    "nodemailer": "^10.1.1",
+    "pg": "^8.16.3"
+  }
+}

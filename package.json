@@ -1,0 +1,17 @@
+{
+  "name": "sirepes",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "api"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace @sirepes/frontend",
+    "dev:api": "npm run dev --workspace @sirepes/api",
+    "build:frontend": "npm run build --workspace @sirepes/frontend",
+    "db:migrate": "npm run db:migrate --workspace @sirepes/api",
+    "db:bootstrap-admin": "npm run db:bootstrap-admin --workspace @sirepes/api",
+    "db:create-admin": "npm run db:create-admin --workspace @sirepes/api"
+  }
+}

@@ -1,0 +1,54 @@
+@import "@fontsource-variable/source-sans-3";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Source Sans 3", "Fira Sans", system-ui, sans-serif;
+  --color-sirepes-burgundy: #5a0d30;
+  --color-sirepes-burgundy-dark: #260414;
+  --color-sirepes-gold: #e8c46d;
+  --color-sirepes-ink: #172a43;
+  --color-menu-ink: #0b1f3a;
+  --color-menu-primary: #102b4e;
+  --color-menu-accent: #24628a;
+  --color-menu-muted: #53677d;
+  --color-menu-line: #dce5ed;
+  --color-menu-canvas: #f5f8fb;
+  --color-menu-surface: #ffffff;
+  --color-menu-soft: #edf4f8;
+  --color-menu-hover: #8aa8bf;
+  --color-menu-focus: #397da8;
+  --color-menu-divider: #e5ebf1;
+}
+
+:root {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
