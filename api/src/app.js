@@ -1,6 +1,7 @@
 import express from 'express'
 import authRoutes from './modules/auth/auth.routes.js'
 import usersRoutes from './modules/users/users.routes.js'
+import recordsRoutes from './modules/records/records.routes.js'
 import { query } from './db/pool.js'
 import cookieParser from 'cookie-parser'
 import { randomUUID } from 'node:crypto'
@@ -14,7 +15,7 @@ app.use((request, response, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
     const allowedOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
     if (!request.get('origin') || request.get('origin') !== allowedOrigin) {
-      return response.status(403).json({ code: 'ORIGIN_NOT_ALLOWED', message: 'Origen de solicitud no permitido.' })
+      return response.status(403).json({ code: 'ORIGIN_NOT_ALLOWED', message: 'Origen de solicitud no permitido.', requestId: request.id })
     }
   }
   next()
@@ -37,18 +38,30 @@ app.get('/api/ready', async (_request, response) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/admin/users', usersRoutes)
+app.use('/api/records', recordsRoutes)
 
-app.use((error, _request, response, _next) => {
+app.use((error, request, response, _next) => {
   const status = Number(error.status) || 500
-  if (status >= 500) console.error(`Error API ${error.code || error.name || 'INTERNAL_ERROR'}`)
+  const safeCode = typeof error.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code)
+    ? error.code
+    : 'INTERNAL_ERROR'
+  if (status >= 500) {
+    console.error(JSON.stringify({
+      requestId: request.id,
+      status,
+      stage: typeof error.stage === 'string' && /^[a-z_]{1,32}$/.test(error.stage) ? error.stage : 'api',
+      code: safeCode,
+    }))
+  }
   response.status(status).json({
-    code: error.code || 'INTERNAL_ERROR',
+    code: safeCode,
     message: status >= 500 ? 'Ocurrió un error interno. Inténtalo nuevamente.' : error.message,
+    requestId: request.id,
   })
 })
 
-app.use((_request, response) => {
-  response.status(404).json({ code: 'NOT_FOUND', message: 'Recurso no encontrado.' })
+app.use((request, response) => {
+  response.status(404).json({ code: 'NOT_FOUND', message: 'Recurso no encontrado.', requestId: request.id })
 })
 
 export default app

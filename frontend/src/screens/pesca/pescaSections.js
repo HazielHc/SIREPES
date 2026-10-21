@@ -77,7 +77,3 @@ export const pescaSections = [
     ],
   },
 ]
-
-for (const section of pescaSections) {
-  for (const field of section.fields) field.required = true
-}

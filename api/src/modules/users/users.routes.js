@@ -8,6 +8,7 @@ import { writeAudit } from '../audit/audit.repository.js'
 
 const router = Router()
 const ROLES = new Set(['capturista', 'personal_seder', 'invitado'])
+const KNOWN_ROLES = new Set([...ROLES, 'administrador'])
 const resetAttempts = new Map()
 
 function fail(status, code, message) {
@@ -15,6 +16,18 @@ function fail(status, code, message) {
   error.status = status
   error.code = code
   throw error
+}
+
+function stageFailure(stage, code) {
+  const error = new Error('User account operation failed.')
+  error.status = 500
+  error.code = code
+  error.stage = stage
+  return error
+}
+
+function logSafeStageFailure(requestId, stage, code) {
+  console.error(JSON.stringify({ requestId, status: 500, stage, code }))
 }
 
 function validEmail(value) {
@@ -71,15 +84,17 @@ router.post('/', async (request, response, next) => {
     const email = String(request.body?.email || '').trim().toLowerCase()
     const role = String(request.body?.role || '')
     if (fullName.length < 3 || fullName.length > 160 || !validEmail(email) || !ROLES.has(role)) {
-      return response.status(400).json({ code: 'INVALID_USER', message: 'Revisa nombre, correo y perfil del usuario.' })
+      return response.status(400).json({ code: 'INVALID_USER', message: 'Revisa nombre, correo y perfil del usuario.', requestId: request.id })
     }
     if (!isMailConfigured()) fail(503, 'MAIL_NOT_CONFIGURED', 'El correo institucional no está configurado. Define SMTP_HOST, SMTP_PORT y SMTP_FROM antes de crear cuentas.')
 
-    const temporaryPassword = createTemporaryPassword()
-    const passwordHash = await hashPassword(temporaryPassword)
-    const client = await pool.connect()
     let user
+    let temporaryPassword
+    let client
     try {
+      temporaryPassword = createTemporaryPassword()
+      const passwordHash = await hashPassword(temporaryPassword)
+      client = await pool.connect()
       await client.query('BEGIN')
       const username = await uniqueUsername(client, usernameBase(fullName, email))
       const inserted = await client.query(
@@ -90,25 +105,47 @@ router.post('/', async (request, response, next) => {
       )
       user = inserted.rows[0]
       await client.query('COMMIT')
-    } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => logSafeStageFailure(request.id, 'insert_rollback', 'USER_CREATE_FAILED'))
+      if (error.code === '23505') throw error
+      throw stageFailure('insert', 'USER_CREATE_FAILED')
+    } finally { client?.release() }
 
     try {
-      await sendTemporaryCredentials({ to: email, fullName, username: user.username, password: temporaryPassword })
-      const activation = await pool.connect()
       try {
-        await activation.query('BEGIN')
-        const activated = await activation.query("UPDATE users SET status = 'active', updated_at = now() WHERE id = $1 AND status = 'disabled'", [user.id])
-        if (activated.rowCount !== 1) throw new Error('No se pudo activar la cuenta creada.')
-        await writeAudit({ actorUserId: request.user.id, action: 'admin.user.create', targetType: 'user', targetId: user.id, requestId: request.id, metadata: { role }, client: activation })
-        await activation.query('COMMIT')
-      } catch (error) { await activation.query('ROLLBACK'); throw error } finally { activation.release() }
-    } catch (deliveryError) {
-      await pool.query('DELETE FROM users WHERE id = $1', [user.id]).catch(() => {})
-      throw deliveryError
+        await sendTemporaryCredentials({ to: email, fullName, username: user.username, password: temporaryPassword })
+      } catch {
+        throw stageFailure('delivery', 'USER_EMAIL_DELIVERY_FAILED')
+      }
+
+      try {
+        const activation = await pool.connect()
+        try {
+          await activation.query('BEGIN')
+          const activated = await activation.query("UPDATE users SET status = 'active', updated_at = now() WHERE id = $1 AND status = 'disabled'", [user.id])
+          if (activated.rowCount !== 1) throw stageFailure('activation', 'USER_ACTIVATION_FAILED')
+          await writeAudit({ actorUserId: request.user.id, action: 'admin.user.create', targetType: 'user', targetId: user.id, requestId: request.id, metadata: { role }, client: activation })
+          await activation.query('COMMIT')
+        } catch (error) {
+          await activation.query('ROLLBACK').catch(() => logSafeStageFailure(request.id, 'activation_rollback', 'USER_ACTIVATION_FAILED'))
+          if (error.stage === 'activation') throw error
+          throw stageFailure('activation', 'USER_ACTIVATION_FAILED')
+        } finally { activation.release() }
+      } catch (error) {
+        if (error.stage === 'activation') throw error
+        throw stageFailure('activation', 'USER_ACTIVATION_FAILED')
+      }
+    } catch (operationError) {
+      try {
+        await pool.query('DELETE FROM users WHERE id = $1', [user.id])
+      } catch {
+        logSafeStageFailure(request.id, 'cleanup', 'USER_CLEANUP_FAILED')
+      }
+      throw operationError
     }
     response.status(201).json({ user: { ...user, status: 'active' } })
   } catch (error) {
-    if (error.code === '23505') return response.status(409).json({ code: 'USER_EXISTS', message: 'Ya existe una cuenta con ese correo.' })
+    if (error.code === '23505') return response.status(409).json({ code: 'USER_EXISTS', message: 'Ya existe una cuenta con esos datos.', requestId: request.id })
     next(error)
   }
 })
@@ -121,7 +158,7 @@ router.patch('/:id', async (request, response, next) => {
   if (request.user.id === request.params.id && (status === 'disabled' || (role && role !== request.user.role))) {
     return response.status(400).json({ code: 'SELF_CHANGE_BLOCKED', message: 'No puedes deshabilitar o cambiar el perfil de tu propia cuenta.' })
   }
-  if (role !== undefined && !ROLES.has(role)) return response.status(400).json({ code: 'INVALID_ROLE', message: 'El perfil solicitado no está permitido.' })
+  if (role !== undefined && !KNOWN_ROLES.has(role)) return response.status(400).json({ code: 'INVALID_ROLE', message: 'El perfil solicitado no está permitido.' })
   if (status !== undefined && !['active', 'disabled'].includes(status)) return response.status(400).json({ code: 'INVALID_STATUS', message: 'El estado solicitado no está permitido.' })
   if (role === undefined && status === undefined) return response.status(400).json({ code: 'EMPTY_UPDATE', message: 'Indica un perfil o estado para actualizar.' })
   const client = await pool.connect()
@@ -130,15 +167,18 @@ router.patch('/:id', async (request, response, next) => {
     await client.query('SELECT pg_advisory_xact_lock(7342201)')
     const current = await client.query('SELECT id, role, status FROM users WHERE id = $1 FOR UPDATE', [request.params.id])
     if (!current.rowCount) { await client.query('ROLLBACK'); return response.status(404).json({ code: 'USER_NOT_FOUND', message: 'No se encontró la cuenta.' }) }
-    if (current.rows[0].role === 'administrador' && role) {
+    if (role === 'administrador' && current.rows[0].role !== 'administrador') {
       await client.query('ROLLBACK')
-      return response.status(409).json({ code: 'ADMIN_ROLE_LOCKED', message: 'El perfil Administrador solo puede aprovisionarse por el comando inicial.' })
+      return response.status(400).json({ code: 'INVALID_ROLE', message: 'El perfil Administrador no puede asignarse desde la web.' })
     }
-    if (status === 'disabled' && current.rows[0].role === 'administrador' && current.rows[0].status === 'active') {
+    const targetIsActiveAdmin = current.rows[0].role === 'administrador' && current.rows[0].status === 'active'
+    const removesActiveAdmin = targetIsActiveAdmin && ((role !== undefined && role !== 'administrador') || status === 'disabled')
+    if ((current.rows[0].role === 'administrador' && role !== undefined) || removesActiveAdmin) {
       const { rows: adminCount } = await client.query("SELECT count(*)::int AS total FROM users WHERE role = 'administrador' AND status = 'active'")
-      if (adminCount[0].total <= 1) {
+      const activeAdminsAfterChange = adminCount[0].total - (removesActiveAdmin ? 1 : 0)
+      if (activeAdminsAfterChange < 1) {
         await client.query('ROLLBACK')
-        return response.status(409).json({ code: 'LAST_ADMIN', message: 'No se puede deshabilitar la última cuenta administradora activa.' })
+        return response.status(409).json({ code: 'LAST_ADMIN', message: 'Debe permanecer al menos una cuenta administradora activa.' })
       }
     }
     const updated = await client.query(

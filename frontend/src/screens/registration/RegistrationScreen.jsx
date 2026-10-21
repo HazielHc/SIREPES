@@ -20,7 +20,7 @@ function RegistrationScreen({ module, role, record, readOnly = false, onExit, on
     <>
       {import.meta.env.DEV && (
         <p className="m-0 border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950" role="note">
-          Vista de desarrollo · perfil {role} · el envío y el guardado aún no están conectados a la API.
+          Vista de desarrollo · perfil {role} · usa una sesión activa para guardar cambios en PostgreSQL.
         </p>
       )}
       <SectionedForm

@@ -43,7 +43,11 @@ function getRoleLabel(role) {
 }
 
 function getErrorMessage(error, fallback) {
-  return error?.response?.data?.message || error?.message || fallback
+  const message = error?.response?.data?.message || error?.message || fallback
+  const requestId = error?.requestId || error?.response?.data?.requestId
+  return Number(error?.status || error?.response?.status) >= 500 && requestId
+    ? `${message} Referencia: ${requestId}`
+    : message
 }
 
 function formatDate(value) {
@@ -345,7 +349,7 @@ function UserManagementScreen({
       </>}>
         <form id="edit-user-form" className="grid gap-4" onSubmit={(event) => { event.preventDefault(); const payload = { role: modal.role, status: modal.status }; void runAction(() => usersApi.updateUser(modal.user.id, payload), 'Se actualizaron los permisos de la cuenta.') }}>
           <div className="rounded-lg bg-menu-canvas px-3.5 py-3 text-sm"><span className="block font-semibold text-menu-ink">{modal.user.username || 'Usuario'}</span><span className="mt-1 block text-menu-muted">{modal.user.email || 'Sin correo'}</span></div>
-          <label className="grid gap-1.5 text-sm font-semibold text-menu-ink">Perfil<select value={modal.role} onChange={(event) => setModal({ ...modal, role: event.target.value })} className="min-h-11 rounded-lg border border-menu-line bg-white px-3 font-normal outline-none focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20">{roleOptions(true).map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>
+          <label className="grid gap-1.5 text-sm font-semibold text-menu-ink">Perfil<select value={modal.role} onChange={(event) => setModal({ ...modal, role: event.target.value })} className="min-h-11 rounded-lg border border-menu-line bg-white px-3 font-normal outline-none focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20">{roleOptions(modal.user.role === 'administrador').map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>
           <label className="grid gap-1.5 text-sm font-semibold text-menu-ink">Estado<select value={modal.status} onChange={(event) => setModal({ ...modal, status: event.target.value })} className="min-h-11 rounded-lg border border-menu-line bg-white px-3 font-normal outline-none focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20"><option value="active">Activo: puede ingresar</option><option value="disabled">Desactivado: acceso bloqueado</option></select></label>
           <p className="text-xs leading-5 text-menu-muted">Al guardar se aplicarán los permisos del nuevo perfil. Desactivar la cuenta impide nuevos accesos.</p>
         </form>

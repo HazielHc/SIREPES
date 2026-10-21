@@ -48,7 +48,6 @@ router.post('/login', async (request, response, next) => {
     }
 
     attempts.delete(key)
-    attempts.delete(ipKey)
     const token = createSessionToken()
     const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60_000)
     await pool.query('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)', [digestSessionToken(token), user.id, expiresAt])

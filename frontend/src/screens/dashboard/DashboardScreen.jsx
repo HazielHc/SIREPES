@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import sederLogo from '../../assets/seder-nayarit-recortado.png'
 
 function Icon({ name, className = 'size-5' }) {
@@ -11,7 +11,6 @@ function Icon({ name, className = 'size-5' }) {
     search: <><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></>,
     plus: <><path d="M12 5v14M5 12h14" /></>,
     filter: <><path d="M4 6h16M7 12h10m-7 6h4" /></>,
-    trash: <><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3" /></>,
     user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.4-3.5 2.8-5.5 7-5.5s6.6 2 7 5.5" /></>,
     shield: <><path d="M12 3 19 6v5c0 4.5-2.8 7.8-7 10-4.2-2.2-7-5.5-7-10V6l7-3Z" /><path d="m9 12 2 2 4-4" /></>,
   }
@@ -83,18 +82,23 @@ function StatusPill({ status }) {
 function DashboardScreen({
   module = 'pesca',
   role,
-  isPreview = false,
   records = [],
   drafts = [],
+  recordsBusy = false,
+  recordsError = '',
+  recordFilters = { search: '', status: '', personType: '' },
+  recordsPagination = { page: 1, pageSize: 50, total: 0 },
+  onRecordFiltersChange,
+  onRecordsPageChange,
   onNewRecord,
   onOpenDraft,
   onOpenRecord,
-  onDeleteRecord,
   onBackToMenu,
   onLogout,
 }) {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState('')
+  const searchTerm = recordFilters.search || ''
+  const selectedStatus = recordFilters.status || ''
+  const selectedPersonType = recordFilters.personType || ''
   const isAcuacultura = String(module).toLocaleLowerCase('es').includes('acuac')
   const moduleLabel = isAcuacultura ? 'Acuacultura' : 'Pesca'
   const moduleSection = isAcuacultura ? 'Unidades acuícolas' : 'Unidades pesqueras'
@@ -102,20 +106,22 @@ function DashboardScreen({
   const safeDrafts = Array.isArray(drafts) ? drafts : []
   const isGuest = ['guest', 'invitado'].includes(String(role ?? '').toLocaleLowerCase('es'))
   const isAdmin = ['admin', 'administrador', 'administrator'].includes(String(role ?? '').toLocaleLowerCase('es'))
+  const isCapturer = ['capturer', 'capturista'].includes(String(role ?? '').toLocaleLowerCase('es'))
+  const canCreateRecords = isAdmin || isCapturer
   const roleIconName = isAdmin ? 'shield' : 'user'
-  const availableStatuses = useMemo(
-    () => [...new Set(safeRecords.map(getStatus).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
-    [safeRecords],
-  )
+  const totalPages = Math.max(1, Math.ceil(recordsPagination.total / recordsPagination.pageSize))
+  const pageStart = recordsPagination.total === 0 ? 0 : (recordsPagination.page - 1) * recordsPagination.pageSize + 1
+  const pageEnd = Math.min(recordsPagination.page * recordsPagination.pageSize, recordsPagination.total)
   const filteredRecords = useMemo(() => {
     const query = searchTerm.trim().toLocaleLowerCase('es')
     return safeRecords.filter((record) => {
-      const matchesSearch = !query || [getFolio(record), getLocality(record), getStatus(record)]
+      const matchesSearch = !query || [getFolio(record), getHolder(record), getLocality(record), getStatus(record)]
         .some((value) => String(value).toLocaleLowerCase('es').includes(query))
-      const matchesStatus = !selectedStatus || getStatus(record) === selectedStatus
-      return matchesSearch && matchesStatus
+      const matchesStatus = !selectedStatus || record.status === selectedStatus
+      const matchesPersonType = !selectedPersonType || record.personType === selectedPersonType
+      return matchesSearch && matchesStatus && matchesPersonType
     })
-  }, [safeRecords, searchTerm, selectedStatus])
+  }, [safeRecords, searchTerm, selectedStatus, selectedPersonType])
 
   function handleOpenRecord(record) {
     onOpenRecord?.(record)
@@ -123,18 +129,6 @@ function DashboardScreen({
 
   function handleOpenDraft(draft) {
     onOpenDraft?.(draft)
-  }
-
-  function handleDeleteRecord(record) {
-    const folio = getFolio(record)
-    const target = folio ? ` ${folio}` : ''
-    if (window.confirm(`¿Eliminar el registro${target}? Esta acción no se puede deshacer.`)) {
-      onDeleteRecord?.(record)
-    }
-  }
-
-  function canDeleteRecord(record) {
-    return isAdmin && Boolean(onDeleteRecord) && ['finalizado', 'finalized'].includes(getStatus(record).toLocaleLowerCase('es'))
   }
 
   return (
@@ -165,27 +159,28 @@ function DashboardScreen({
       </header>
 
         <main id="centro-control" className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-9">
-          {isPreview && <p className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-950" role="status">Vista de desarrollo: los registros y borradores se conservan en memoria mientras esta aplicación permanezca abierta; la conexión a la API está pendiente.</p>}
+          {recordsError && <p className="mb-5 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm leading-5 text-red-900" role="alert">{recordsError}</p>}
+          {recordsBusy && <p className="mb-5 text-sm text-menu-muted" role="status">Cargando registros guardados…</p>}
           <div className="mb-6 flex flex-col justify-between gap-4 sm:mb-8 sm:flex-row sm:items-end">
             <div>
               <p className="mb-1 text-sm font-semibold text-menu-primary">Módulo de {moduleLabel}</p>
               <h1 className="m-0 text-2xl font-bold leading-tight tracking-tight text-sirepes-ink sm:text-3xl">Centro de control</h1>
               <p className="mb-0 mt-2 max-w-2xl text-base leading-6 text-menu-muted">Administra los registros y borradores disponibles para este módulo.</p>
             </div>
-            {!isGuest && onNewRecord && <button type="button" onClick={onNewRecord} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-menu-primary px-4 py-2.5 text-sm font-bold text-white shadow-[0_4px_12px_rgb(7_26_50_/_18%)] transition-colors hover:bg-menu-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-menu-focus sm:w-auto"><Icon name="plus" />Nuevo registro</button>}
+            {canCreateRecords && onNewRecord && <button type="button" onClick={onNewRecord} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-menu-primary px-4 py-2.5 text-sm font-bold text-white shadow-[0_4px_12px_rgb(7_26_50_/_18%)] transition-colors hover:bg-menu-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-menu-focus sm:w-auto"><Icon name="plus" />Nuevo registro</button>}
           </div>
 
           <section aria-label="Resumen del módulo" className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
             <article className="rounded-xl border border-menu-line bg-menu-surface p-4 shadow-[0_4px_16px_rgb(7_26_50_/_5%)] sm:p-5">
-              <p className="m-0 text-sm font-medium text-menu-muted">Registros capturados</p>
-              <p className="mb-0 mt-2 text-3xl font-bold tabular-nums text-menu-ink">{safeRecords.length}</p>
+              <p className="m-0 text-sm font-medium text-menu-muted">Coincidencias</p>
+              <p className="mb-0 mt-2 text-3xl font-bold tabular-nums text-menu-ink">{recordsPagination.total}</p>
             </article>
             <article className="rounded-xl border border-menu-line bg-menu-surface p-4 shadow-[0_4px_16px_rgb(7_26_50_/_5%)] sm:p-5">
-              <p className="m-0 text-sm font-medium text-menu-muted">Borradores</p>
+              <p className="m-0 text-sm font-medium text-menu-muted">Borradores en esta página</p>
               <p className="mb-0 mt-2 text-3xl font-bold tabular-nums text-sirepes-ink">{safeDrafts.length}</p>
             </article>
             <article className="rounded-xl border border-menu-line bg-menu-surface p-4 shadow-[0_4px_16px_rgb(7_26_50_/_5%)] sm:p-5">
-              <p className="m-0 text-sm font-medium text-menu-muted">Completados</p>
+              <p className="m-0 text-sm font-medium text-menu-muted">Finalizados en esta página</p>
               <p className="mb-0 mt-2 text-3xl font-bold tabular-nums text-emerald-700">{safeRecords.filter((record) => ['completado', 'finalizado'].includes(getStatus(record).toLocaleLowerCase('es'))).length}</p>
             </article>
           </section>
@@ -198,16 +193,25 @@ function DashboardScreen({
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_190px] lg:w-[min(100%,510px)]">
                 <label className="relative block">
-                  <span className="sr-only">Buscar por folio o localidad</span>
+                  <span className="sr-only">Buscar por folio, nombre o localidad</span>
                   <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 size-[18px] -translate-y-1/2 text-menu-muted" />
-                  <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar folio o localidad" className="min-h-11 w-full rounded-lg border border-menu-line bg-menu-surface pl-10 pr-3 text-base text-sirepes-ink outline-none placeholder:text-slate-400 focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20" />
+                  <input type="search" value={searchTerm} onChange={(event) => onRecordFiltersChange?.({ search: event.target.value })} placeholder="Buscar folio, nombre o localidad" className="min-h-11 w-full rounded-lg border border-menu-line bg-menu-surface pl-10 pr-3 text-base text-sirepes-ink outline-none placeholder:text-slate-400 focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20" />
                 </label>
                 <label className="relative block">
                   <span className="sr-only">Filtrar por estatus</span>
                   <Icon name="filter" className="pointer-events-none absolute left-3 top-1/2 size-[18px] -translate-y-1/2 text-menu-muted" />
-                  <select value={selectedStatus} onChange={(event) => setSelectedStatus(event.target.value)} className="min-h-11 w-full appearance-none rounded-lg border border-menu-line bg-menu-surface pl-10 pr-3 text-base text-sirepes-ink outline-none focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20">
+                  <select value={selectedStatus} onChange={(event) => onRecordFiltersChange?.({ status: event.target.value })} className="min-h-11 w-full appearance-none rounded-lg border border-menu-line bg-menu-surface pl-10 pr-3 text-base text-sirepes-ink outline-none focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20">
                     <option value="">Todos los estatus</option>
-                    {availableStatuses.map((status) => <option value={status} key={status}>{status}</option>)}
+                    <option value="draft">Borrador</option>
+                    <option value="finalizado">Finalizado</option>
+                  </select>
+                </label>
+                <label className="relative block">
+                  <span className="sr-only">Filtrar por tipo de persona</span>
+                  <select value={selectedPersonType} onChange={(event) => onRecordFiltersChange?.({ personType: event.target.value })} className="min-h-11 w-full appearance-none rounded-lg border border-menu-line bg-menu-surface px-3 text-base text-sirepes-ink outline-none focus:border-menu-focus focus:ring-2 focus:ring-menu-focus/20">
+                    <option value="">Todos los tipos</option>
+                    <option value="fisica">Persona física</option>
+                    <option value="moral">Persona moral</option>
                   </select>
                 </label>
               </div>
@@ -220,8 +224,8 @@ function DashboardScreen({
                   <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-menu-soft text-menu-primary"><Icon name={searchTerm || selectedStatus ? 'search' : 'document'} className="size-6" /></span>
                   <h3 className="m-0 text-base font-bold text-sirepes-ink">{safeRecords.length === 0 ? 'Aún no hay registros' : 'No se encontraron resultados'}</h3>
                   <p className="mb-0 mt-2 text-sm leading-5 text-menu-muted">{safeRecords.length === 0 ? 'Cuando existan registros de este módulo, aparecerán aquí.' : 'Prueba con otro folio, localidad o estatus.'}</p>
-                  {safeRecords.length > 0 && <button type="button" onClick={() => { setSearchTerm(''); setSelectedStatus('') }} className="mt-4 min-h-10 rounded-lg px-3 text-sm font-semibold text-menu-primary underline underline-offset-4 hover:text-sirepes-burgundy focus-visible:outline-2 focus-visible:outline-menu-focus">Limpiar filtros</button>}
-                  {safeRecords.length === 0 && !isGuest && onNewRecord && <button type="button" onClick={onNewRecord} className="mt-4 min-h-11 rounded-lg bg-menu-primary px-4 text-sm font-bold text-white hover:bg-menu-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-menu-focus">Crear registro</button>}
+                  {recordsPagination.total > 0 && <button type="button" onClick={() => onRecordFiltersChange?.({ search: '', status: '', personType: '' })} className="mt-4 min-h-10 rounded-lg px-3 text-sm font-semibold text-menu-primary underline underline-offset-4 hover:text-sirepes-burgundy focus-visible:outline-2 focus-visible:outline-menu-focus">Limpiar filtros</button>}
+                  {safeRecords.length === 0 && canCreateRecords && onNewRecord && <button type="button" onClick={onNewRecord} className="mt-4 min-h-11 rounded-lg bg-menu-primary px-4 text-sm font-bold text-white hover:bg-menu-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-menu-focus">Crear registro</button>}
                 </div>
               </div>
             ) : (
@@ -240,7 +244,7 @@ function DashboardScreen({
                           <td className="px-6 py-4 text-sm text-menu-muted">{getLocality(record)}</td>
                           <td className="px-6 py-4"><StatusPill status={getStatus(record)} /></td>
                           <td className="px-6 py-4 text-sm text-menu-muted">{formatDate(getUpdatedAt(record))}</td>
-                          <td className="px-6 py-4"><div className="flex items-center justify-end gap-1"><button type="button" onClick={() => handleOpenRecord(record)} className="min-h-10 rounded-md px-3 text-sm font-semibold text-menu-primary hover:bg-menu-soft focus-visible:outline-2 focus-visible:outline-menu-focus">Abrir</button>{canDeleteRecord(record) && <button type="button" onClick={() => handleDeleteRecord(record)} aria-label={`Eliminar registro${folio ? ` ${folio}` : ''}`} className="min-h-10 rounded-md px-3 text-sm font-semibold text-red-800 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-menu-focus">Eliminar</button>}</div></td>
+                          <td className="px-6 py-4"><button type="button" onClick={() => handleOpenRecord(record)} className="min-h-10 rounded-md px-3 text-sm font-semibold text-menu-primary hover:bg-menu-soft focus-visible:outline-2 focus-visible:outline-menu-focus">Abrir</button></td>
                         </tr>
                       })}
                     </tbody>
@@ -254,13 +258,21 @@ function DashboardScreen({
                         <span className="grid min-w-0 gap-1.5"><strong className="truncate text-sm text-sirepes-ink">{folio || 'Registro'}</strong><span className="truncate text-sm text-menu-muted">{getHolder(record)}</span><span className="truncate text-xs text-menu-muted">{getLocality(record)} · {formatDate(getUpdatedAt(record))}</span></span>
                         <StatusPill status={getStatus(record)} />
                       </button>
-                      {canDeleteRecord(record) && <button type="button" onClick={() => handleDeleteRecord(record)} aria-label={`Eliminar registro${folio ? ` ${folio}` : ''}`} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-semibold text-red-800 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-menu-focus"><Icon name="trash" className="size-4" /><span>Eliminar</span></button>}
                     </li>
                   })}
                 </ul>
               </>
             )}
           </section>
+
+          <nav aria-label="Paginación de expedientes" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-menu-line bg-menu-surface px-4 py-3">
+            <p className="m-0 text-sm text-menu-muted">Mostrando {pageStart}–{pageEnd} de {recordsPagination.total} expedientes</p>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => onRecordsPageChange?.(recordsPagination.page - 1)} disabled={recordsPagination.page <= 1 || recordsBusy} className="min-h-10 rounded-lg border border-menu-line px-3 text-sm font-semibold text-menu-primary disabled:cursor-not-allowed disabled:opacity-50">Anterior</button>
+              <span className="min-w-24 text-center text-sm text-menu-muted">Página {recordsPagination.page} de {totalPages}</span>
+              <button type="button" onClick={() => onRecordsPageChange?.(recordsPagination.page + 1)} disabled={recordsPagination.page >= totalPages || recordsBusy} className="min-h-10 rounded-lg border border-menu-line px-3 text-sm font-semibold text-menu-primary disabled:cursor-not-allowed disabled:opacity-50">Siguiente</button>
+            </div>
+          </nav>
 
           <section id="borradores" aria-labelledby="drafts-title" className="overflow-hidden rounded-xl border border-menu-line bg-menu-surface">
             <div className="border-b border-menu-divider px-4 py-4 sm:px-6 sm:py-5">

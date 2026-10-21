@@ -12,6 +12,7 @@
     "build:frontend": "npm run build --workspace @sirepes/frontend",
     "db:migrate": "npm run db:migrate --workspace @sirepes/api",
     "db:bootstrap-admin": "npm run db:bootstrap-admin --workspace @sirepes/api",
-    "db:create-admin": "npm run db:create-admin --workspace @sirepes/api"
+    "db:create-admin": "npm run db:create-admin --workspace @sirepes/api",
+    "sonar": "sonar-scanner"
   }
 }

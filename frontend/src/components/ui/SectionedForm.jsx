@@ -124,7 +124,17 @@ function SectionedForm({
   }
 
   function updateField(name, value) {
-    setValues((current) => ({ ...current, [name]: value }))
+    setValues((current) => {
+      const next = { ...current, [name]: value }
+      if (name === 'tipoPersona') {
+        for (const field of sections.flatMap((section) => section.fields)) {
+          if (field.visibleWhen?.field === 'tipoPersona' && field.visibleWhen.value !== value) {
+            next[field.name] = field.type === 'checkbox-group' ? [] : ''
+          }
+        }
+      }
+      return next
+    })
     setFieldErrors((current) => {
       if (!current[name]) return current
       const next = { ...current }
@@ -156,12 +166,12 @@ function SectionedForm({
     try {
       await onSaveDraft?.({ values, currentSectionId: activeSection?.id, completedSectionIds: [...completedSections].map((index) => sections[index]?.id) })
       setStatus(isFinalized
-        ? 'Cambios preparados en esta sesión. La persistencia definitiva requiere conexión con la API.'
+        ? 'Los cambios del expediente se guardaron en el sistema.'
         : onSaveDraft
-          ? 'Borrador guardado en esta sesión y disponible para retomarlo desde el centro de control.'
-          : 'Borrador listo en esta sesión. Para conservarlo, el sistema debe conectarse a la persistencia API.')
-    } catch {
-      setStatus('No se pudo preparar el borrador. Puedes seguir editando e intentarlo de nuevo.')
+          ? 'Borrador guardado y disponible para retomarlo desde el centro de control.'
+          : 'No hay una conexión disponible para guardar este borrador.')
+    } catch (error) {
+      setStatus(`No se pudo guardar el borrador. Puedes seguir editando e intentarlo de nuevo.${error?.requestId ? ` Referencia: ${error.requestId}` : ''}`)
     } finally {
       setIsWorking(false)
     }
@@ -176,9 +186,9 @@ function SectionedForm({
       await onSubmit?.({ values, sectionIds: sections.map((section) => section.id) })
       setCompletedSections(new Set(sections.map((_, index) => index)))
       setIsFinalized(true)
-      setStatus('Formulario finalizado en esta sesión. El guardado final requiere persistencia API y aún no se ha confirmado.')
-    } catch {
-      setStatus('No se pudo completar el envío. Tus datos siguen disponibles para corregirlos e intentarlo de nuevo.')
+      setStatus('El expediente se finalizó y quedó guardado en el sistema.')
+    } catch (error) {
+      setStatus(`No se pudo completar el envío. Tus datos siguen disponibles para corregirlos e intentarlo de nuevo.${error?.requestId ? ` Referencia: ${error.requestId}` : ''}`)
     } finally {
       setIsWorking(false)
     }
@@ -342,7 +352,7 @@ function SectionedForm({
             </div>
 
             <footer className="flex flex-col gap-4 border-t border-menu-divider bg-menu-canvas/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-              <p className="m-0 max-w-2xl text-sm leading-5 text-menu-muted">Los datos se conservan en esta sesión. El guardado final requiere persistencia API.</p>
+              <p className="m-0 max-w-2xl text-sm leading-5 text-menu-muted">Guarda el borrador para conservar tus avances en el sistema. Solo puedes editar expedientes conforme a tu perfil y permisos.</p>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
                 <button type="button" onClick={() => { setActiveIndex((index) => Math.max(index - 1, 0)); setFieldErrors({}); setStatus('') }} disabled={activeIndex === 0 || isWorking} className="min-h-11 rounded-lg border border-menu-line bg-menu-surface px-4 py-2 text-sm font-semibold text-sirepes-ink hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-menu-focus disabled:cursor-not-allowed disabled:opacity-50">Atrás</button>
                 {canEdit && <button type="button" onClick={saveDraft} disabled={isWorking} className="min-h-11 rounded-lg border border-menu-primary bg-menu-surface px-4 py-2 text-sm font-semibold text-menu-primary hover:bg-menu-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-menu-focus disabled:cursor-wait disabled:opacity-60">{isWorking ? 'Procesando…' : isFinalized ? 'Guardar cambios' : 'Guardar borrador'}</button>}

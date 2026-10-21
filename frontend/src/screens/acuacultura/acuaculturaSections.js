@@ -112,7 +112,3 @@ export const acuaculturaSections = [
     ],
   },
 ]
-
-for (const section of acuaculturaSections) {
-  for (const field of section.fields) field.required = true
-}

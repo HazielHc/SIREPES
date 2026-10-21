@@ -21,3 +21,4 @@ coverage/
 *.p12
 *.pfx
 .npmrc
+.scannerwork/

@@ -5,7 +5,13 @@ async function request(path, options = {}) {
     headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
   })
   const result = response.status === 204 ? {} : await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(result.message || 'No fue posible completar la solicitud.')
+  if (!response.ok) {
+    const error = new Error(result.message || 'No fue posible completar la solicitud.')
+    error.status = response.status
+    error.code = result.code
+    error.requestId = result.requestId || response.headers.get('X-Request-Id') || null
+    throw error
+  }
   return result
 }
 

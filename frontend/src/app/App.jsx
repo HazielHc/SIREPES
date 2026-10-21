@@ -7,6 +7,7 @@ import UserManagementScreen from '../screens/administracion-usuarios/UserManagem
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen.jsx'
 import { changePassword, getCurrentUser, logoutFromApi } from '../services/authApi.js'
 import { usersApi } from '../services/usersApi.js'
+import { recordsApi } from '../services/recordsApi.js'
 
 function getPersonName(values = {}) {
   if (values.tipoPersona === 'Moral') return values.razonSocial || 'Persona moral'
@@ -15,10 +16,6 @@ function getPersonName(values = {}) {
 
 function getLocality(values = {}) {
   return values.localidadUpa || values.localidad || values.municipioUpa || values.municipio || '—'
-}
-
-function makeId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
 function App() {
@@ -35,6 +32,11 @@ function App() {
   const [drafts, setDrafts] = useState([])
   const [activeRecord, setActiveRecord] = useState(null)
   const [recordReadOnly, setRecordReadOnly] = useState(false)
+  const [recordsBusy, setRecordsBusy] = useState(false)
+  const [recordsError, setRecordsError] = useState('')
+  const [recordFilters, setRecordFilters] = useState({ search: '', status: '', personType: '' })
+  const [recordsPage, setRecordsPage] = useState(1)
+  const [recordsPagination, setRecordsPagination] = useState({ page: 1, pageSize: 50, total: 0 })
 
   const role = session?.user?.role || session?.role || 'capturista'
   const moduleRecords = useMemo(() => records.filter((record) => record.module === activeModule), [records, activeModule])
@@ -59,8 +61,32 @@ function App() {
     return () => { active = false }
   }, [preview])
 
+  useEffect(() => {
+    if (screen !== 'dashboard' || !activeModule || !session || session.isPreview) return
+    let active = true
+    setRecordsBusy(true)
+    setRecordsError('')
+    recordsApi.list(activeModule, { ...recordFilters, page: recordsPage })
+      .then(({ records: loaded = [], pagination = { page: recordsPage, pageSize: 50, total: loaded.length } }) => {
+        if (!active) return
+        setRecords(loaded.filter((record) => record.status === 'finalizado'))
+        setDrafts(loaded.filter((record) => record.status === 'draft'))
+        setRecordsPagination(pagination)
+      })
+      .catch((error) => {
+        if (active) {
+          const message = error.message || 'No fue posible cargar los expedientes.'
+          setRecordsError(error.status >= 500 && error.requestId ? `${message} Referencia: ${error.requestId}` : message)
+        }
+      })
+      .finally(() => { if (active) setRecordsBusy(false) })
+    return () => { active = false }
+  }, [screen, activeModule, session, recordFilters, recordsPage])
+
   function openDashboard(module) {
     setActiveModule(module)
+    setRecordFilters({ search: '', status: '', personType: '' })
+    setRecordsPage(1)
     setActiveRecord(null)
     setRecordReadOnly(false)
     setScreen('dashboard')
@@ -72,65 +98,81 @@ function App() {
     setScreen('registration')
   }
 
-  function openDraft(draft) {
-    setActiveRecord(draft)
-    setRecordReadOnly(false)
-    setScreen('registration')
+  async function openRecordDetail(record) {
+    setRecordsBusy(true)
+    setRecordsError('')
+    try {
+      const { record: detail } = await recordsApi.get(record.id)
+      setActiveRecord({
+        ...detail,
+        personName: getPersonName(detail.values),
+        localidad: getLocality(detail.values),
+      })
+      setRecordReadOnly(detail.status === 'finalizado')
+      setScreen('registration')
+    } catch (error) {
+      const message = error.message || 'No fue posible abrir el expediente.'
+      setRecordsError(error.status >= 500 && error.requestId ? `${message} Referencia: ${error.requestId}` : message)
+    } finally {
+      setRecordsBusy(false)
+    }
   }
 
-  function openRecord(record) {
-    setActiveRecord(record)
-    setRecordReadOnly(!['admin', 'administrator', 'administrador'].includes(String(role).toLocaleLowerCase('es')))
-    setScreen('registration')
-  }
+  function openDraft(draft) { void openRecordDetail(draft) }
+  function openRecord(record) { void openRecordDetail(record) }
 
-  function saveDraft(payload) {
-    const previous = payload.recordId ? drafts.find((draft) => draft.id === payload.recordId) : null
-    const updatedAt = new Date().toISOString()
-    const draft = {
-      ...(previous || activeRecord || {}),
-      id: payload.recordId || makeId(`${activeModule}-draft`),
+  async function saveDraft(payload) {
+    const body = {
       module: activeModule,
-      status: 'draft',
-      folio: previous?.folio || activeRecord?.folio || `BOR-${activeModule === 'pesca' ? 'PES' : 'ACU'}-${Date.now().toString().slice(-6)}`,
-      personName: getPersonName(payload.values),
-      localidad: getLocality(payload.values),
       values: payload.values,
       currentSectionId: payload.currentSectionId,
       completedSectionIds: payload.completedSectionIds || [],
-      updatedAt,
     }
-
-    const editingFinalRecord = records.some((record) => record.id === payload.recordId)
-    if (editingFinalRecord) {
-      setRecords((current) => current.map((record) => record.id === draft.id ? { ...draft, status: 'finalizado' } : record))
-      setActiveRecord({ ...draft, status: 'finalizado' })
+    const result = payload.recordId
+      ? await recordsApi.update(payload.recordId, body)
+      : await recordsApi.create(body)
+    const saved = {
+      ...result.record,
+      personName: getPersonName(result.record.values),
+      localidad: getLocality(result.record.values),
+    }
+    if (saved.status === 'finalizado') {
+      setDrafts((current) => current.filter((item) => item.id !== saved.id))
+      setRecords((current) => current.some((item) => item.id === saved.id)
+        ? current.map((item) => item.id === saved.id ? saved : item)
+        : [...current, saved])
     } else {
-      setDrafts((current) => current.some((item) => item.id === draft.id)
-        ? current.map((item) => item.id === draft.id ? draft : item)
-        : [...current, draft])
-      setActiveRecord(draft)
+      setDrafts((current) => current.some((item) => item.id === saved.id)
+        ? current.map((item) => item.id === saved.id ? saved : item)
+        : [...current, saved])
     }
+    setActiveRecord(saved)
   }
 
-  function submitRecord(payload) {
-    const updatedAt = new Date().toISOString()
-    const previousRecord = records.find((record) => record.id === payload.recordId)
-    const draft = drafts.find((item) => item.id === payload.recordId)
-    const record = {
-      ...(previousRecord || draft || activeRecord || {}),
-      id: payload.recordId || makeId(`${activeModule}-record`),
+  async function submitRecord(payload) {
+    const body = {
       module: activeModule,
-      status: 'finalizado',
-      folio: previousRecord?.folio || draft?.folio || activeRecord?.folio || `${activeModule === 'pesca' ? 'PES' : 'ACU'}-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`,
-      personName: getPersonName(payload.values),
-      localidad: getLocality(payload.values),
       values: payload.values,
-      currentSectionId: payload.sectionIds?.at(-1),
+      currentSectionId: payload.sectionIds?.at(-1) || activeRecord?.currentSectionId || null,
       completedSectionIds: payload.sectionIds || [],
-      updatedAt,
     }
-
+    const draftResult = payload.recordId ? null : await recordsApi.create(body)
+    if (draftResult) {
+      const draftRecord = {
+        ...draftResult.record,
+        personName: getPersonName(draftResult.record.values),
+        localidad: getLocality(draftResult.record.values),
+      }
+      setActiveRecord(draftRecord)
+      setDrafts((current) => [...current.filter((item) => item.id !== draftRecord.id), draftRecord])
+    }
+    const recordId = payload.recordId || draftResult.record.id
+    const { record: savedRecord } = await recordsApi.finalize(recordId, body)
+    const record = {
+      ...savedRecord,
+      personName: getPersonName(savedRecord.values),
+      localidad: getLocality(savedRecord.values),
+    }
     setRecords((current) => current.some((item) => item.id === record.id)
       ? current.map((item) => item.id === record.id ? record : item)
       : [...current, record])
@@ -188,13 +230,17 @@ function App() {
     return <DashboardScreen
       module={activeModule}
       role={role}
-      isPreview={Boolean(session?.isPreview)}
       records={moduleRecords}
       drafts={moduleDrafts}
+      recordsBusy={recordsBusy}
+      recordsError={recordsError}
+      recordFilters={recordFilters}
+      recordsPagination={recordsPagination}
+      onRecordFiltersChange={(next) => { setRecordFilters((current) => ({ ...current, ...next })); setRecordsPage(1) }}
+      onRecordsPageChange={setRecordsPage}
       onNewRecord={startNewRecord}
       onOpenDraft={openDraft}
       onOpenRecord={openRecord}
-      onDeleteRecord={(record) => setRecords((current) => current.filter((item) => item.id !== record.id))}
       onBackToMenu={backToMenu}
       onLogout={logout}
     />
